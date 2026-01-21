@@ -1,0 +1,35 @@
+# LLM Guard comprehensive multirun configuration
+# Runs all combinations: 3 models × 4 datasets × 2 styles = 24 experiments
+# Usage: python scripts/run_llm_guard_unified.py --config-name=llm_guard
+
+# Global device and seed configuration
+device: null  # Device: 'cpu', 'cuda', or null for auto (will use CUDA if available)
+seed: 42      # Random seed for reproducibility
+
+model:
+  model_name: promptguard  # Will be swept via hydra.sweeper.params
+  batch_size: 20
+
+data:
+  dataset_name: AbuseEval  # Will be swept via hydra.sweeper.params
+  source_style: explicit  # Will be swept via hydra.sweeper.params
+  target_style: null # null to use opposite of source_style
+  data_path: "Shuwan/cadet-datasets"
+
+pipeline:
+  run_name: "{model_name}-{dataset_name}-{source_style}-seed{seed}-{timestamp}"
+  output_path: "results/llmguard_new/"
+  device: null  # Device (inherits from global if null)
+  seed: null    # Random seed (inherits from global if null)
+
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "auc_roc"
+    - "aupr"
+
+logging:
+  level: "INFO"

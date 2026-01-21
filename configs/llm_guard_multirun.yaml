@@ -1,0 +1,19 @@
+# LLM Guard configuration with Hydra multirun enabled
+# This config automatically runs multiple experiments using hydra.mode=MULTIRUN
+
+# Override defaults from simple_baselines.yaml
+defaults:
+  - llm_guard
+  - _self_
+
+# Hydra multirun configuration
+hydra:
+  mode: MULTIRUN  # Enable multirun mode by default
+  sweep:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra:job.name}
+  sweeper:
+    params:
+      model.model_name: llamaguard
+      data.dataset_name: AbuseEval,DynaHate,Implicit-Hate-Corpus
+      data.source_style: explicit,implicit

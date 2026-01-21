@@ -1,0 +1,65 @@
+# Simple Baselines - Generic Configuration
+# This is a generic configuration that defaults to BERT
+# For model-specific optimized configs, use: bert.yaml, roberta.yaml, distilbert.yaml, or bart.yaml
+# Usage: python scripts/run_simple_baselines.py --config-name=simple_baselines
+#
+# Model-specific configs available:
+#   - bert.yaml:       BERT Base (110M params, batch_size=16, lr=2e-5)
+#   - roberta.yaml:    RoBERTa Base (125M params, batch_size=16, lr=1e-5)
+#   - distilbert.yaml: DistilBERT Base (66M params, batch_size=24, lr=5e-5) - Fastest
+#   - bart.yaml:       BART Base (140M params, batch_size=12, lr=3e-5)
+
+# DistilBERT Base Uncased - Simple Baseline Configuration
+# Pre-trained model: distilbert-base-uncased
+# Usage: python scripts/run_simple_baselines.py --config-name=distilbert
+
+# Global device and seed configuration
+device: null  # Device for computation: 'cpu', 'cuda', or null for auto (will use CUDA if available)
+seed: 42      # Random seed for reproducibility
+
+# Model configuration for DistilBERT
+model:
+  model_name: "distilbert"  # Maps to distilbert-base-uncased
+
+  # Training hyperparameters - Used by SimpleBaselineTrainer
+  hyperparams:
+    learning_rate: 5e-5        # AdamW learning rate
+    batch_size: 20             # Training batch size (reasonable for 80GB GPU)
+    eval_batch_size: 40        # Evaluation batch size (can be larger since no gradients)
+    gradient_accumulation_steps: 1  # No gradient accumulation needed with batch_size=16
+    num_epochs: 10             # Maximum training epochs
+    warmup_ratio: 0.1          # Warmup ratio (replaces warmup_steps)
+    weight_decay: 0.01         # L2 regularization
+    threshold_range: [0.05, 0.95]  # Range for threshold optimization
+    n_thresholds: 19           # Number of threshold points to test
+
+# Data configuration following cross-style training paradigm
+data:
+  dataset_name: "AbuseEval"           # Options: AbuseEval, DynaHate, Implicit-Hate-Corpus, IsHate
+  source_style: "explicit"      # Training style: explicit or implicit
+  target_style: null            # Auto-set to opposite of source_style
+  data_path: "Shuwan/cadet-datasets"   # Path to processed datasets
+  max_length: 512              # Maximum tokenization length
+
+# Training configuration
+training:
+  use_validation: true        # Whether to use validation split during training
+
+# Evaluation configuration
+evaluation:
+  metrics:
+    - "accuracy"      # Overall accuracy
+    - "precision"     # Precision score
+    - "recall"        # Recall score
+    - "f1"           # F1 score
+    - "auc_roc"      # Area under ROC curve
+    - "aupr"         # Area under precision-recall curve
+
+  save_embeddings: true
+
+# Pipeline execution configuration
+pipeline:
+  run_name: "{model_name}-{dataset_name}-{source_style}-seed{seed}-{timestamp}"
+  output_path: "results/simple_baselines_new"  # Output directory for DistilBERT results
+  device: null                           # Device (inherits from global if null)
+  seed: null                             # Random seed (inherits from global if null)

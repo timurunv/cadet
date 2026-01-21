@@ -1,0 +1,12 @@
+line-length = 100
+src = ["src", "notebooks", "scripts", "tests"]
+exclude = ["notebooks/original/**.ipynb"]
+
+[lint]
+select = ["E", "F", "I"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false

@@ -1,0 +1,23 @@
+default: true
+
+# MD013/line-length - Line length
+MD013:
+  # Number of characters
+  line_length: 100
+  # Include code blocks
+  code_blocks: false
+  # Ignore table length violations
+  tables: false
+
+# Allow heading duplication if under different parent headings
+MD024:
+  siblings_only: true
+
+# Allow emphasis used instead of a heading
+MD036: false
+
+# Allow inline HTML
+MD033: false
+
+# Table style
+MD060: false

@@ -1,0 +1,101 @@
+# CADET Configuration
+# Causal Aware Disentanglement for Explicit/implicit Transfer
+# Usage: python scripts/run_cadet.py --config-name=cadet
+
+# Global configuration
+device: null  # Auto-detect (CUDA if available)
+seed: 42
+
+model:
+  model_name: "cadet"
+
+  # Pre-trained model checkpoint paths (for trainer only)
+  encoder_checkpoint: "path-to-encoder"
+  decoder_checkpoint: "path-to-decoder"
+
+  # Tokenizer paths (for dataloader - use HF defaults)
+  encoder_tokenizer: "roberta-base"
+  decoder_tokenizer: "facebook/bart-base"
+
+  # Architecture dimensions
+  style_dim: 2        # Explicit/Implicit (binary) style_dim
+  conf_dim: 256          # Confounder dimension
+  orth_dim: 128          # Orthogonality projection dimension
+
+  # Prediction variants
+  use_confounder_for_prediction: false  # false: M* -> Y (cross-style transfer); true: M* + U -> Y (in-distribution)
+
+  # Gumbel-Softmax temperature
+  style_tau: 1.0          # Increase from 0.5 - softer initialization
+  target_tau: 1.0         # Increase from 0.5 - softer initialization
+
+data:
+  dataset_name: "AbuseEval"
+  source_style: "explicit"      # Training style level
+  target_style: null      # Validation/test style level
+  target_conf_threshold: 0.9       # Filter targets by confidence
+  max_length: 256                  # Token sequence length
+  data_path: "Shuwan/cadet-datasets"
+
+training:
+  max_epochs: 15
+  patience: 5                   # Early stopping patience
+  batch_size: 16
+
+  # Loss weights - REBALANCED after KL fix
+  loss_weights:
+    reconstruction: 0.5    # Back to reasonable weight
+    hate: 2             # Primary task
+    target: 0.5           # Important for generalization
+    style: 1.0            # Style disentanglement
+    kl: 0.1               # Now properly normalized, can use standard weight
+    orthogonality: 3    # Orthogonality constraint
+    counterfactual: 0.5   # Causal constraint
+    cycle: 0.5            # Consistency
+    adversarial: 1.0      # Domain adaptation
+
+  # Loss ablation - hyphen-separated string of losses to drop (for ablation studies)
+  drop_losses: null          # e.g., "counterfactual-cycle" to drop those losses
+  # Valid values: reconstruction, hate, target, style, kl, orthogonality, counterfactual, cycle, adversarial
+
+  # Optimizer configuration
+  optimizer:
+    backbone_lr: 3e-5        # Back to standard learning rate
+    head_lr: 2e-4            # Standard head learning rate
+    weight_decay: 1e-2
+
+  # Progressive scheduling
+  progressive:
+    reconstruction_ramp_epochs: 5
+    kl_start_epoch: 2                 # Can start KL earlier now
+    kl_full_epoch: 6                  # Shorter ramp since KL is properly scaled
+    style_kl_start_epoch: 3
+    orth_start_epoch: 3
+    adv_start_epoch: 2
+    no_early_stop_before_epoch: 5
+
+  # Validation
+  use_validation: true
+  threshold_range: [0.05, 0.95]
+  n_thresholds: 19
+
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "auc_roc"
+    - "aupr"
+
+  save_embeddings: true
+
+pipeline:
+  run_name: "{model_name}-{dataset_name}-{source_style}-seed{seed}-{timestamp}"
+  output_path: "results"
+  seed: null                    # Inherits from global
+  device: null                  # Inherits from global
+  log_level: "INFO"
+
+# adhoc:
+#   n_samples: 2000               # Use full dataset unless specified otherwise
