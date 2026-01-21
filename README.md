@@ -7,8 +7,7 @@
 [![Paper][badge-paper]][paper]
 [![Conference][badge-conference]][www2026]
 [![Dataset][badge-dataset]][hf-dataset]
-[![Python 3.12+][badge-python]][python-downloads]
-
+[![DOI](https://zenodo.org/badge/1138061385.svg)](https://doi.org/10.5281/zenodo.18331975)
 </div>
 
 ---
