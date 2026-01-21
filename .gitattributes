@@ -1,0 +1,17 @@
+# Use Git LFS for raw datasets to avoid bloating git history
+data/samples/** filter=lfs diff=lfs merge=lfs -text
+* text=auto
+*.py linguist-language=Python
+*.ipynb linguist-language=Jupyter
+*.csv text eol=lf
+*.tsv text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary

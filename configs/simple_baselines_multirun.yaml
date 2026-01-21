@@ -1,0 +1,22 @@
+# Simple Baselines Multirun Configuration
+# This configuration will run:
+# 4 models × 4 datasets × 2 style directions = 32 experiments total
+# Usage: python scripts/run_simple_baselines.py --config-name=simple_baselines_multirun --multirun
+
+defaults:
+  - simple_baselines
+  - _self_
+
+# Hydra multirun configuration
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra:job.name}
+  sweeper:
+    params:
+      # Sweep across different models
+      model.model_name: distilbert,bert,roberta,bart
+      data.dataset_name: AbuseEval,DynaHate,Implicit-Hate-Corpus,IsHate
+      data.source_style: explicit,implicit
+

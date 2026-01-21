@@ -1,0 +1,35 @@
+# CADET Ablation Study Configuration
+# Comprehensive ablation study across single, dual, and multiple loss combinations
+# Dataset: AbuseEval (default, can be overridden)
+# Usage: python scripts/run_experiments.py --config-name=cadet_ablation
+
+defaults:
+  - cadet
+  - _self_
+
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: outputs/ablation/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra:job.name}
+  sweeper:
+    params:
+      # Single loss ablations
+      # Dual loss ablations
+      # Multiple loss ablations
+      training.drop_losses: hate,target,style,orthogonality,adversarial,reconstruction,counterfactual,cycle,kl,reconstruction-kl,counterfactual-cycle,target-style,orthogonality-adversarial,reconstruction-cycle,hate-target,adversarial-reconstruction-cycle-kl,target-style-counterfactual-cycle,counterfactual-cycle-orthogonality-adversarial-reconstruction,target-style-orthogonality-adversarial-reconstruction,target-style-orthogonality-adversarial-reconstruction-counterfactual-cycle
+      data.dataset_name: AbuseEval
+      data.source_style: explicit,implicit
+
+# Override run naming
+pipeline:
+  run_name: "{model_name}-{source_style}-ablation-{timestamp}"
+  output_path: "results/cadet_ablation"
+
+# Use consistent seed
+seed: 42
+
+# Training settings
+training:
+  max_epochs: 15
+  patience: 5

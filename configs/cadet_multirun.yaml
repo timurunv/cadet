@@ -1,0 +1,22 @@
+# CADET Multirun Configuration
+# Usage: python scripts/run_cadet.py --config-name=cadet_multirun
+
+defaults:
+  - cadet
+  - _self_
+
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra:job.name}
+  sweeper:
+    params:
+      model.model_name: cadet
+      data.dataset_name: AbuseEval,DynaHate,Implicit-Hate-Corpus,IsHate
+      data.source_style: explicit,implicit
+
+pipeline:
+  run_name: "{model_name}-{dataset_name}-{source_style}-seed{seed}-{timestamp}"
+  output_path: "results/new_cadet"
+
