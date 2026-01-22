@@ -128,6 +128,31 @@ If you use CADET in your research, please cite:
   journal={arXiv preprint arXiv:2510.07707},
   year={2025}
 }
+
+@dataset{cadet_dataset_2026,
+  title={cadet-datasets},
+  url={https://huggingface.co/datasets/Shuwan/cadet-datasets},
+  DOI={10.57967/HF/7615},
+  publisher={Hugging Face},
+  author={Chengshuai Zhao, Shu Wan, Paras Sheth, Karan Patwa, K. Selçuk Candan, Huan Liu}, year={2026}
+}
+
+@software{shu_2026_18331976,
+  author       = {Shu},
+  title        = {Shu-Wan/cadet: Initial release (v1.0.0)},
+  month        = jan,
+  year         = 2026,
+  publisher    = {Zenodo},
+  version      = {v1.0.0},
+  doi          = {10.5281/zenodo.18331976},
+  url          = {https://doi.org/10.5281/zenodo.18331976},
+  swhid        = {swh:1:dir:ceb3fc11806a24207cb0e43fd92b9b6f106f4cc2
+                   ;origin=https://doi.org/10.5281/zenodo.18331975;vi
+                   sit=swh:1:snp:402265cabd7f46dfbeeadf2a29ed9ed9a173
+                   48a8;anchor=swh:1:rel:014aced8c618a22ad8ffd659e14f
+                   8c8e29e11440;path=Shu-Wan-cadet-678b13c
+                  },
+}
 ```
 
 ## License
