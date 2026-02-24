@@ -170,4 +170,4 @@ and terms than the code in this repository. Refer to the dataset card on Hugging
 [hf-dataset]: https://huggingface.co/datasets/Shuwan/cadet-datasets
 [paper]: https://arxiv.org/abs/2510.07707
 [python-downloads]: https://www.python.org/downloads/
-[www2026]: https://www2026.thewebconf.org/accepted.html
+[www2026]: https://www2026.thewebconf.org/accepted/research-tracks.html
