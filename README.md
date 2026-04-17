@@ -122,11 +122,21 @@ ChatGPT.
 If you use CADET in your research, please cite:
 
 ```bibtex
-@article{zhao2025causality,
-  title={Causality Guided Representation Learning for Cross-Style Hate Speech Detection},
-  author={Zhao, Chengshuai and Wan, Shu and Sheth, Paras and Patwa, Karan and Candan, K Sel{\c{c}}uk and Liu, Huan},
-  journal={arXiv preprint arXiv:2510.07707},
-  year={2025}
+@inproceedings{10.1145/3774904.3792669,
+author = {Zhao, Chengshuai and Wan, Shu and Sheth, Paras and Patwa, Karan and Candan, K. Sel\c{c}uk and Liu, Huan},
+title = {Causality Guided Representation Learning for Cross-Style Hate Speech Detection},
+year = {2026},
+isbn = {9798400723070},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi-org.ezproxy1.lib.asu.edu/10.1145/3774904.3792669},
+doi = {10.1145/3774904.3792669},
+booktitle = {Proceedings of the ACM Web Conference 2026},
+pages = {1819–1829},
+numpages = {11},
+keywords = {hate speech detection, causal representation learning, domain generalization, counterfactual reasoning},
+location = {United Arab Emirates},
+series = {WWW '26}
 }
 
 @dataset{cadet_dataset_2026,
@@ -170,4 +180,4 @@ and terms than the code in this repository. Refer to the dataset card on Hugging
 [hf-dataset]: https://huggingface.co/datasets/Shuwan/cadet-datasets
 [paper]: https://arxiv.org/abs/2510.07707
 [python-downloads]: https://www.python.org/downloads/
-[www2026]: https://www2026.thewebconf.org/accepted/research-tracks.html
+[www2026]: https://dl.acm.org/doi/10.1145/3774904.3792669
