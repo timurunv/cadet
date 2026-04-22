@@ -21,7 +21,7 @@ generalization between explicit and implicit hate speech.
 
 ![CADET](/docs/figures/CADET.png)
 
-**:trophy: Accepted at [The Web Conference 2026][www2026] (WWW'26)!**
+**:trophy: Accepted as a Oral presentation at [The Web Conference 2026][www2026] (WWW'26)!**
 
 ## Quick Start
 
