@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 import numpy as np
+import pandas as pd
 import torch
 from datasets import Dataset
 from torch.utils.data import DataLoader, Sampler
@@ -464,3 +465,124 @@ class CADETLoader(HateSpeechDataLoader):
         )
 
         return train_loader, val_loader, test_loader
+
+
+class CSVCADETLoader(CADETLoader):
+    """CADET data loader for three local CSV files: train / val / test.
+
+    Required CSV columns:
+      - text: raw text
+      - hate_label: 0/1
+      - style: 0/1, where 0=implicit and 1=explicit
+      - target: target group/category string
+      - target_conf: confidence float; use 1.0 if unavailable
+
+    Optional columns such as avg are ignored.
+    """
+
+    REQUIRED_COLUMNS = {"text", "hate_label", "style", "target", "target_conf"}
+
+    def __init__(
+        self,
+        train_csv_path: str | Path,
+        val_csv_path: str | Path,
+        test_csv_path: str | Path,
+        source_style: str = "explicit",
+        target_style: str | None = None,
+        target_conf_threshold: float = 0.0,
+        encoder_tokenizer_id: str = "roberta-base",
+        decoder_tokenizer_id: str = "facebook/bart-base",
+        max_length: int = 256,
+        random_seed: int = 42,
+    ):
+        self.dataset = "CSV files"
+        self.dataset_name = "custom_csv"
+        self.train_csv_path = Path(train_csv_path)
+        self.val_csv_path = Path(val_csv_path)
+        self.test_csv_path = Path(test_csv_path)
+        self.source_style = source_style
+        self.target_style = target_style or source_style
+        self.target_conf_threshold = target_conf_threshold
+        self.max_length = max_length
+        self.random_seed = random_seed
+
+        self.encoder_tokenizer = AutoTokenizer.from_pretrained(encoder_tokenizer_id)
+        self.decoder_tokenizer = AutoTokenizer.from_pretrained(decoder_tokenizer_id, num_labels=2)
+
+        if self.encoder_tokenizer.pad_token is None:
+            self.encoder_tokenizer.pad_token = self.encoder_tokenizer.eos_token
+        if self.decoder_tokenizer.pad_token is None:
+            self.decoder_tokenizer.pad_token = self.decoder_tokenizer.eos_token
+
+        np.random.seed(random_seed)
+        torch.manual_seed(random_seed)
+
+        self.label2id: dict[str, int] | None = None
+        self.id2label: dict[int, str] | None = None
+        self.n_targets: int | None = None
+
+    def _read_csv(self, path: Path) -> Dataset:
+        if not path.exists():
+            raise FileNotFoundError(f"CSV file not found: {path}")
+
+        df = pd.read_csv(path)
+        missing = self.REQUIRED_COLUMNS - set(df.columns)
+        if missing:
+            raise ValueError(f"{path} is missing required columns: {sorted(missing)}")
+
+        df = df.copy()
+        df["text"] = df["text"].fillna("").astype(str)
+        df["hate_label"] = df["hate_label"].astype(int)
+        df["style"] = df["style"].astype(int)
+        df["target"] = df["target"].fillna("none").astype(str)
+        df["target_conf"] = df["target_conf"].fillna(1.0).astype(float)
+
+        bad_labels = sorted(set(df["hate_label"]) - {0, 1})
+        if bad_labels:
+            raise ValueError(f"{path} has invalid hate_label values: {bad_labels}; expected 0/1")
+
+        bad_styles = sorted(set(df["style"]) - {0, 1})
+        if bad_styles:
+            raise ValueError(f"{path} has invalid style values: {bad_styles}; expected 0/1")
+
+        return Dataset.from_pandas(df, preserve_index=False)
+
+    def load_data(self) -> tuple[Dataset, Dataset, Dataset]:
+        train = self._read_csv(self.train_csv_path)
+        val = self._read_csv(self.val_csv_path)
+        test = self._read_csv(self.test_csv_path)
+
+        train = self._filter_by_target_confidence(train, self.target_conf_threshold)
+        val = self._filter_by_target_confidence(val, self.target_conf_threshold)
+        test = self._filter_by_target_confidence(test, self.target_conf_threshold)
+
+        if self.label2id is None:
+            all_targets = set(train["target"]) | set(val["target"]) | set(test["target"])
+            sorted_targets = sorted(all_targets)
+            self.label2id = {label: idx for idx, label in enumerate(sorted_targets)}
+            self.id2label = {idx: label for label, idx in self.label2id.items()}
+            self.n_targets = len(sorted_targets)
+
+        train = train.map(self._encode_target, batched=False)
+        val = val.map(self._encode_target, batched=False)
+        test = test.map(self._encode_target, batched=False)
+
+        train = train.map(self._tokenize, batched=True, remove_columns=["text"])
+        val = val.map(self._tokenize, batched=True, remove_columns=["text"])
+        test = test.map(self._tokenize, batched=True, remove_columns=["text"])
+
+        columns = [
+            "enc_input_ids",
+            "enc_attention_mask",
+            "dec_input_ids",
+            "dec_attention_mask",
+            "hate_label",
+            "style",
+            "target_id",
+            "target_conf",
+        ]
+        train.set_format(type="torch", columns=columns)
+        val.set_format(type="torch", columns=columns)
+        test.set_format(type="torch", columns=columns)
+
+        return train, val, test

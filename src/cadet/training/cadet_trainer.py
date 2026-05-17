@@ -21,6 +21,8 @@ from cadet.models.cadet import CADET
 from cadet.training.base_trainer import BaseTrainer
 from cadet.utils import to_serializable
 
+import copy
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,6 +109,40 @@ class CADETTrainer(BaseTrainer):
             orth_dim=model_config["orth_dim"],
             use_confounder_for_prediction=model_config["use_confounder_for_prediction"],
         ).to(device)
+
+        checkpoint_path = model_config.get("resume_from_checkpoint")
+
+        if checkpoint_path:
+            logger.info(f"Loading checkpoint from {checkpoint_path}")
+            state_dict = torch.load(checkpoint_path, map_location=device)
+            if isinstance(state_dict, dict) and "state_dict" in state_dict:
+                state_dict = state_dict["state_dict"]
+
+            ignore_mismatched = model_config.get("ignore_mismatched_checkpoint_keys", True)
+            if ignore_mismatched:
+                current_state = self.model.state_dict()
+                compatible_state = {}
+                skipped = []
+                for key, value in state_dict.items():
+                    if key in current_state and current_state[key].shape == value.shape:
+                        compatible_state[key] = value
+                    else:
+                        skipped.append(key)
+
+                missing, unexpected = self.model.load_state_dict(compatible_state, strict=False)
+                logger.info(
+                    "Loaded %d checkpoint tensors; skipped %d mismatched tensors",
+                    len(compatible_state),
+                    len(skipped),
+                )
+                if skipped:
+                    logger.warning("Skipped checkpoint keys: %s", skipped[:20])
+                if missing:
+                    logger.warning("Missing model keys after partial load: %s", list(missing)[:20])
+                if unexpected:
+                    logger.warning("Unexpected checkpoint keys: %s", list(unexpected)[:20])
+            else:
+                self.model.load_state_dict(state_dict)
 
         # Setup optimizer
         self._setup_optimizer()
@@ -247,7 +283,7 @@ class CADETTrainer(BaseTrainer):
                 if val_f1 > self.best_val_f1:
                     self.best_val_f1 = val_f1
                     self.best_threshold = val_threshold
-                    self.best_state_dict = self.model.state_dict().copy()
+                    self.best_state_dict = copy.deepcopy(self.model.state_dict())
                     self.patience_counter = 0
                     self._save_checkpoint(epoch, val_f1, val_threshold)
                     logger.info(f"✓ New best model saved (F1: {val_f1:.4f})")
@@ -814,6 +850,7 @@ class CADETTrainer(BaseTrainer):
         all_hate_labels = []
         all_hate_preds = []
         all_hate_probs = []
+        all_style_labels = []
         sample_idx = 0
 
         logger.info("Streaming embeddings and latents to disk...")
@@ -853,6 +890,7 @@ class CADETTrainer(BaseTrainer):
                 all_hate_labels.extend(batch["hate_label"].cpu().numpy())
                 all_hate_preds.extend(hate_preds.cpu().numpy())
                 all_hate_probs.extend(hate_probs.cpu().numpy())
+                all_style_labels.extend(batch["style"].cpu().numpy())
 
                 sample_idx += batch_size
 
@@ -888,7 +926,7 @@ class CADETTrainer(BaseTrainer):
         dataset_name = getattr(self.data_loader, "dataset_name", "unknown")
 
         n_samples = len(all_hate_labels)
-        style_labels = np.ones(n_samples) if target_style == "explicit" else np.zeros(n_samples)
+        style_labels = np.array(all_style_labels)
 
         # Save embeddings.npz (zm only - for t-SNE visualization)
         logger.info("Saving embeddings.npz (zm for t-SNE)...")

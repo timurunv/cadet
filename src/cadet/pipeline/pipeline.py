@@ -103,9 +103,10 @@ class Pipeline(ABC):
 
         # Validate and normalize data config
         if hasattr(config, "data"):
-            # Validate dataset_name
+            # Validate dataset_name, unless using local CSV files.
             dataset_name = config.data.get("dataset_name")
-            if dataset_name and dataset_name not in AVAILABLE_DATASETS:
+            using_local_csv = bool(config.data.get("train_csv_path"))
+            if dataset_name and dataset_name not in AVAILABLE_DATASETS and not using_local_csv:
                 raise ValueError(
                     f"Invalid dataset_name: {dataset_name}. Must be one of {AVAILABLE_DATASETS}"
                 )

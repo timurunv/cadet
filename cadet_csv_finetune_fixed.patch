@@ -1,0 +1,381 @@
+diff --git a/configs/cadet_csv_finetune.yaml b/configs/cadet_csv_finetune.yaml
+new file mode 100644
+index 0000000..f5241c0
+--- /dev/null
++++ b/configs/cadet_csv_finetune.yaml
+@@ -0,0 +1,91 @@
++# Fine-tuning CADET on local CSV files
++# Run:
++#   uv run python scripts/run_experiments.py -cn=cadet_csv_finetune
++
++device: null
++seed: 42
++
++model:
++  model_name: "cadet"
++  encoder_checkpoint: "roberta-base"
++  decoder_checkpoint: "facebook/bart-base"
++  encoder_tokenizer: "roberta-base"
++  decoder_tokenizer: "facebook/bart-base"
++
++  # Put your pretrained CADET checkpoint here.
++  # Example if you restore model.pt in the removed folder:
++  resume_from_checkpoint: "trained_runs/cadet-IsHate-implicit-seed42-20260411_031450/checkpoints/best/model.pt"
++  ignore_mismatched_checkpoint_keys: true
++
++  style_dim: 2
++  conf_dim: 256
++  orth_dim: 128
++  use_confounder_for_prediction: false
++  style_tau: 1.0
++  target_tau: 1.0
++
++data:
++  dataset_name: "hatecot"
++  source_style: "explicit"
++  target_style: "explicit"
++  target_conf_threshold: 0.0
++  max_length: 256
++
++  # Relative paths are resolved from the project root.
++  train_csv_path: "src/cadet/datasets/hatecot_train.csv"
++  val_csv_path: "src/cadet/datasets/hatecot_val.csv"
++  test_csv_path: "src/cadet/datasets/hatecot_test.csv"
++
++training:
++  max_epochs: 5
++  patience: 2
++  batch_size: 16
++
++  loss_weights:
++    reconstruction: 0.5
++    hate: 2
++    target: 0.5
++    style: 1.0
++    kl: 0.1
++    orthogonality: 3
++    counterfactual: 0.5
++    cycle: 0.5
++    adversarial: 1.0
++
++  drop_losses: null
++
++  optimizer:
++    # Smaller LR = actual fine-tuning, not full retraining.
++    backbone_lr: 1e-5
++    head_lr: 1e-4
++    weight_decay: 1e-2
++
++  progressive:
++    reconstruction_ramp_epochs: 2
++    kl_start_epoch: 1
++    kl_full_epoch: 3
++    style_kl_start_epoch: 1
++    orth_start_epoch: 1
++    adv_start_epoch: 1
++    no_early_stop_before_epoch: 1
++
++  use_validation: true
++  threshold_range: [0.05, 0.95]
++  n_thresholds: 19
++
++evaluation:
++  metrics:
++    - "accuracy"
++    - "precision"
++    - "recall"
++    - "f1"
++    - "auc_roc"
++    - "aupr"
++  save_embeddings: true
++
++pipeline:
++  run_name: "{model_name}-{dataset_name}-finetune-seed{seed}-{timestamp}"
++  output_path: "results"
++  seed: null
++  device: null
++  log_level: "INFO"
+diff --git a/src/cadet/pipeline/cadet_pipeline.py b/src/cadet/pipeline/cadet_pipeline.py
+index 3ed5b75..6395090 100644
+--- a/src/cadet/pipeline/cadet_pipeline.py
++++ b/src/cadet/pipeline/cadet_pipeline.py
+@@ -8,7 +8,11 @@ from typing import Any
+ 
+ from omegaconf import DictConfig
+ 
+-from cadet.datasets.dataloader import CADETLoader
++from pathlib import Path
++
++from pyprojroot import here
++
++from cadet.datasets.dataloader import CADETLoader, CSVCADETLoader
+ from cadet.evaluation.causal_evaluator import CausalEvaluator
+ from cadet.pipeline.pipeline import Pipeline
+ from cadet.training.cadet_trainer import CADETTrainer
+@@ -67,17 +71,36 @@ class CADETPipeline(Pipeline):
+         )
+ 
+         # Step 1: Initialize data loader
+-        self.data_loader = CADETLoader(
+-            dataset_name=self.data_config.dataset_name,
+-            source_style=self.data_config.source_style,
+-            target_style=self.data_config.get("target_style"),
+-            target_conf_threshold=self.data_config.target_conf_threshold,
+-            encoder_tokenizer_id=self.model_config.encoder_tokenizer,
+-            decoder_tokenizer_id=self.model_config.decoder_tokenizer,
+-            max_length=self.data_config.max_length,
+-            root=self.data_config.data_path,
+-            random_seed=self.random_seed,
+-        )
++        # If train_csv_path / val_csv_path / test_csv_path are present, use local CSVs.
++        if self.data_config.get("train_csv_path"):
++            def _resolve_csv_path(path_value: str) -> Path:
++                path = Path(path_value)
++                return path if path.is_absolute() else here(path)
++
++            self.data_loader = CSVCADETLoader(
++                train_csv_path=_resolve_csv_path(self.data_config.train_csv_path),
++                val_csv_path=_resolve_csv_path(self.data_config.val_csv_path),
++                test_csv_path=_resolve_csv_path(self.data_config.test_csv_path),
++                source_style=self.data_config.source_style,
++                target_style=self.data_config.get("target_style"),
++                target_conf_threshold=self.data_config.target_conf_threshold,
++                encoder_tokenizer_id=self.model_config.encoder_tokenizer,
++                decoder_tokenizer_id=self.model_config.decoder_tokenizer,
++                max_length=self.data_config.max_length,
++                random_seed=self.random_seed,
++            )
++        else:
++            self.data_loader = CADETLoader(
++                dataset_name=self.data_config.dataset_name,
++                source_style=self.data_config.source_style,
++                target_style=self.data_config.get("target_style"),
++                target_conf_threshold=self.data_config.target_conf_threshold,
++                encoder_tokenizer_id=self.model_config.encoder_tokenizer,
++                decoder_tokenizer_id=self.model_config.decoder_tokenizer,
++                max_length=self.data_config.max_length,
++                root=self.data_config.data_path,
++                random_seed=self.random_seed,
++            )
+ 
+         # Step 2-4: Initialize trainer
+         self.trainer = CADETTrainer(
+diff --git a/src/cadet/datasets/dataloader.py b/src/cadet/datasets/dataloader.py
+index d7d63fa..bb85117 100644
+--- a/src/cadet/datasets/dataloader.py
++++ b/src/cadet/datasets/dataloader.py
+@@ -8,6 +8,7 @@ from pathlib import Path
+ from typing import cast
+ 
+ import numpy as np
++import pandas as pd
+ import torch
+ from datasets import Dataset
+ from torch.utils.data import DataLoader, Sampler
+@@ -464,3 +465,124 @@ class CADETLoader(HateSpeechDataLoader):
+         )
+ 
+         return train_loader, val_loader, test_loader
++
++
++class CSVCADETLoader(CADETLoader):
++    """CADET data loader for three local CSV files: train / val / test.
++
++    Required CSV columns:
++      - text: raw text
++      - hate_label: 0/1
++      - style: 0/1, where 0=implicit and 1=explicit
++      - target: target group/category string
++      - target_conf: confidence float; use 1.0 if unavailable
++
++    Optional columns such as avg are ignored.
++    """
++
++    REQUIRED_COLUMNS = {"text", "hate_label", "style", "target", "target_conf"}
++
++    def __init__(
++        self,
++        train_csv_path: str | Path,
++        val_csv_path: str | Path,
++        test_csv_path: str | Path,
++        source_style: str = "explicit",
++        target_style: str | None = None,
++        target_conf_threshold: float = 0.0,
++        encoder_tokenizer_id: str = "roberta-base",
++        decoder_tokenizer_id: str = "facebook/bart-base",
++        max_length: int = 256,
++        random_seed: int = 42,
++    ):
++        self.dataset = "CSV files"
++        self.dataset_name = "custom_csv"
++        self.train_csv_path = Path(train_csv_path)
++        self.val_csv_path = Path(val_csv_path)
++        self.test_csv_path = Path(test_csv_path)
++        self.source_style = source_style
++        self.target_style = target_style or source_style
++        self.target_conf_threshold = target_conf_threshold
++        self.max_length = max_length
++        self.random_seed = random_seed
++
++        self.encoder_tokenizer = AutoTokenizer.from_pretrained(encoder_tokenizer_id)
++        self.decoder_tokenizer = AutoTokenizer.from_pretrained(decoder_tokenizer_id, num_labels=2)
++
++        if self.encoder_tokenizer.pad_token is None:
++            self.encoder_tokenizer.pad_token = self.encoder_tokenizer.eos_token
++        if self.decoder_tokenizer.pad_token is None:
++            self.decoder_tokenizer.pad_token = self.decoder_tokenizer.eos_token
++
++        np.random.seed(random_seed)
++        torch.manual_seed(random_seed)
++
++        self.label2id: dict[str, int] | None = None
++        self.id2label: dict[int, str] | None = None
++        self.n_targets: int | None = None
++
++    def _read_csv(self, path: Path) -> Dataset:
++        if not path.exists():
++            raise FileNotFoundError(f"CSV file not found: {path}")
++
++        df = pd.read_csv(path)
++        missing = self.REQUIRED_COLUMNS - set(df.columns)
++        if missing:
++            raise ValueError(f"{path} is missing required columns: {sorted(missing)}")
++
++        df = df.copy()
++        df["text"] = df["text"].fillna("").astype(str)
++        df["hate_label"] = df["hate_label"].astype(int)
++        df["style"] = df["style"].astype(int)
++        df["target"] = df["target"].fillna("none").astype(str)
++        df["target_conf"] = df["target_conf"].fillna(1.0).astype(float)
++
++        bad_labels = sorted(set(df["hate_label"]) - {0, 1})
++        if bad_labels:
++            raise ValueError(f"{path} has invalid hate_label values: {bad_labels}; expected 0/1")
++
++        bad_styles = sorted(set(df["style"]) - {0, 1})
++        if bad_styles:
++            raise ValueError(f"{path} has invalid style values: {bad_styles}; expected 0/1")
++
++        return Dataset.from_pandas(df, preserve_index=False)
++
++    def load_data(self) -> tuple[Dataset, Dataset, Dataset]:
++        train = self._read_csv(self.train_csv_path)
++        val = self._read_csv(self.val_csv_path)
++        test = self._read_csv(self.test_csv_path)
++
++        train = self._filter_by_target_confidence(train, self.target_conf_threshold)
++        val = self._filter_by_target_confidence(val, self.target_conf_threshold)
++        test = self._filter_by_target_confidence(test, self.target_conf_threshold)
++
++        if self.label2id is None:
++            all_targets = set(train["target"]) | set(val["target"]) | set(test["target"])
++            sorted_targets = sorted(all_targets)
++            self.label2id = {label: idx for idx, label in enumerate(sorted_targets)}
++            self.id2label = {idx: label for label, idx in self.label2id.items()}
++            self.n_targets = len(sorted_targets)
++
++        train = train.map(self._encode_target, batched=False)
++        val = val.map(self._encode_target, batched=False)
++        test = test.map(self._encode_target, batched=False)
++
++        train = train.map(self._tokenize, batched=True, remove_columns=["text"])
++        val = val.map(self._tokenize, batched=True, remove_columns=["text"])
++        test = test.map(self._tokenize, batched=True, remove_columns=["text"])
++
++        columns = [
++            "enc_input_ids",
++            "enc_attention_mask",
++            "dec_input_ids",
++            "dec_attention_mask",
++            "hate_label",
++            "style",
++            "target_id",
++            "target_conf",
++        ]
++        train.set_format(type="torch", columns=columns)
++        val.set_format(type="torch", columns=columns)
++        test.set_format(type="torch", columns=columns)
++
++        return train, val, test
+diff --git a/src/cadet/pipeline/pipeline.py b/src/cadet/pipeline/pipeline.py
+index d50de31..5bf2704 100644
+--- a/src/cadet/pipeline/pipeline.py
++++ b/src/cadet/pipeline/pipeline.py
+@@ -103,9 +103,10 @@ class Pipeline(ABC):
+ 
+         # Validate and normalize data config
+         if hasattr(config, "data"):
+-            # Validate dataset_name
++            # Validate dataset_name, unless using local CSV files.
+             dataset_name = config.data.get("dataset_name")
+-            if dataset_name and dataset_name not in AVAILABLE_DATASETS:
++            using_local_csv = bool(config.data.get("train_csv_path"))
++            if dataset_name and dataset_name not in AVAILABLE_DATASETS and not using_local_csv:
+                 raise ValueError(
+                     f"Invalid dataset_name: {dataset_name}. Must be one of {AVAILABLE_DATASETS}"
+                 )
+diff --git a/src/cadet/training/cadet_trainer.py b/src/cadet/training/cadet_trainer.py
+index f526b5e..eddf9eb 100644
+--- a/src/cadet/training/cadet_trainer.py
++++ b/src/cadet/training/cadet_trainer.py
+@@ -115,7 +115,34 @@ class CADETTrainer(BaseTrainer):
+         if checkpoint_path:
+             logger.info(f"Loading checkpoint from {checkpoint_path}")
+             state_dict = torch.load(checkpoint_path, map_location=device)
+-            self.model.load_state_dict(state_dict)
++            if isinstance(state_dict, dict) and "state_dict" in state_dict:
++                state_dict = state_dict["state_dict"]
++
++            ignore_mismatched = model_config.get("ignore_mismatched_checkpoint_keys", True)
++            if ignore_mismatched:
++                current_state = self.model.state_dict()
++                compatible_state = {}
++                skipped = []
++                for key, value in state_dict.items():
++                    if key in current_state and current_state[key].shape == value.shape:
++                        compatible_state[key] = value
++                    else:
++                        skipped.append(key)
++
++                missing, unexpected = self.model.load_state_dict(compatible_state, strict=False)
++                logger.info(
++                    "Loaded %d checkpoint tensors; skipped %d mismatched tensors",
++                    len(compatible_state),
++                    len(skipped),
++                )
++                if skipped:
++                    logger.warning("Skipped checkpoint keys: %s", skipped[:20])
++                if missing:
++                    logger.warning("Missing model keys after partial load: %s", list(missing)[:20])
++                if unexpected:
++                    logger.warning("Unexpected checkpoint keys: %s", list(unexpected)[:20])
++            else:
++                self.model.load_state_dict(state_dict)
+ 
+         # Setup optimizer
+         self._setup_optimizer()
+@@ -823,6 +850,7 @@ class CADETTrainer(BaseTrainer):
+         all_hate_labels = []
+         all_hate_preds = []
+         all_hate_probs = []
++        all_style_labels = []
+         sample_idx = 0
+ 
+         logger.info("Streaming embeddings and latents to disk...")
+@@ -862,6 +890,7 @@ class CADETTrainer(BaseTrainer):
+                 all_hate_labels.extend(batch["hate_label"].cpu().numpy())
+                 all_hate_preds.extend(hate_preds.cpu().numpy())
+                 all_hate_probs.extend(hate_probs.cpu().numpy())
++                all_style_labels.extend(batch["style"].cpu().numpy())
+ 
+                 sample_idx += batch_size
+ 
+@@ -897,7 +926,7 @@ class CADETTrainer(BaseTrainer):
+         dataset_name = getattr(self.data_loader, "dataset_name", "unknown")
+ 
+         n_samples = len(all_hate_labels)
+-        style_labels = np.ones(n_samples) if target_style == "explicit" else np.zeros(n_samples)
++        style_labels = np.array(all_style_labels)
+ 
+         # Save embeddings.npz (zm only - for t-SNE visualization)
+         logger.info("Saving embeddings.npz (zm for t-SNE)...")

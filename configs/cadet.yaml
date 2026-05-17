@@ -12,7 +12,6 @@ model:
   # Pre-trained model checkpoint paths (for trainer only)
   encoder_checkpoint: "roberta-base"
   decoder_checkpoint: "facebook/bart-base"
-  resume_from_checkpoint: null  # Path to checkpoint to resume from (optional)
 
   # Tokenizer paths (for dataloader - use HF defaults)
   encoder_tokenizer: "roberta-base"

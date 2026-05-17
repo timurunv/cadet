@@ -1,0 +1,91 @@
+# Fine-tuning CADET on local CSV files
+# Run:
+#   uv run python scripts/run_experiments.py -cn=cadet_csv_finetune
+
+device: null
+seed: 42
+
+model:
+  model_name: "cadet"
+  encoder_checkpoint: "roberta-base"
+  decoder_checkpoint: "facebook/bart-base"
+  encoder_tokenizer: "roberta-base"
+  decoder_tokenizer: "facebook/bart-base"
+
+  # Put your pretrained CADET checkpoint here.
+  # Example if you restore model.pt in the removed folder:
+  resume_from_checkpoint: "../results/v2_runs/v2-combined-seed42/checkpoints/best/model.pt"
+  ignore_mismatched_checkpoint_keys: true
+
+  style_dim: 2
+  conf_dim: 256
+  orth_dim: 128
+  use_confounder_for_prediction: false
+  style_tau: 1.0
+  target_tau: 1.0
+
+data:
+  dataset_name: "hatecot"
+  source_style: "explicit"
+  target_style: "explicit"
+  target_conf_threshold: 0.0
+  max_length: 256
+
+  # Relative paths are resolved from the project root.
+  train_csv_path: "src/cadet/datasets/hatecot_train.csv"
+  val_csv_path: "src/cadet/datasets/hatecot_val.csv"
+  test_csv_path: "src/cadet/datasets/hatecot_test.csv"
+
+training:
+  max_epochs: 5
+  patience: 2
+  batch_size: 16
+
+  loss_weights:
+    reconstruction: 0.5
+    hate: 2
+    target: 0.5
+    style: 1.0
+    kl: 0.1
+    orthogonality: 3
+    counterfactual: 0.5
+    cycle: 0.5
+    adversarial: 1.0
+
+  drop_losses: null
+
+  optimizer:
+    # Smaller LR = actual fine-tuning, not full retraining.
+    backbone_lr: 1e-5
+    head_lr: 1e-4
+    weight_decay: 1e-2
+
+  progressive:
+    reconstruction_ramp_epochs: 2
+    kl_start_epoch: 1
+    kl_full_epoch: 3
+    style_kl_start_epoch: 1
+    orth_start_epoch: 1
+    adv_start_epoch: 1
+    no_early_stop_before_epoch: 1
+
+  use_validation: true
+  threshold_range: [0.05, 0.95]
+  n_thresholds: 19
+
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "auc_roc"
+    - "aupr"
+  save_embeddings: true
+
+pipeline:
+  run_name: "{model_name}-{dataset_name}-finetune-seed{seed}-{timestamp}"
+  output_path: "results"
+  seed: null
+  device: null
+  log_level: "INFO"

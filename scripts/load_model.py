@@ -2,48 +2,34 @@ import torch
 from transformers import AutoTokenizer
 
 from cadet.models.cadet import CADET
-from cadet.datasets.dataloader import CADETLoader
 
 
-DEVICE = "cpu"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-DATASET_NAME = "IsHate"
-SOURCE_STYLE = "implicit"
-TARGET_STYLE = "explicit"
 MAX_LENGTH = 256
 
 ENCODER_ID = "roberta-base"
 DECODER_ID = "facebook/bart-base"
 
+# Choisis ton modèle final
 CHECKPOINT_PATH = (
-    "trained_runs/"
-    "cadet-IsHate-implicit-seed42-20260411_031450/"
-    "checkpoints/best/model.pt"
+    "results/"
+    "model_inference/model.pt" #cadet_finetune_lr_low_results
 )
 
+# D'après ton run : zt = 13
+N_TARGETS = 13
 
-# === 1. Charger le loader pour récupérer n_targets ===
-loader = CADETLoader(
-    dataset_name=DATASET_NAME,
-    source_style=SOURCE_STYLE,
-    target_style=TARGET_STYLE,
-    target_conf_threshold=0.9,
-    encoder_tokenizer_id=ENCODER_ID,
-    decoder_tokenizer_id=DECODER_ID,
-    max_length=MAX_LENGTH,
-    root="Shuwan/cadet-datasets",
-    random_seed=42,
-)
+# Pour le run 182944, meilleur macro F1
+THRESHOLD = 0.46
 
-loader.load_data()
-n_targets = loader.n_targets
-
-print(f"Nombre de targets: {n_targets}")
+# Si tu utilises le run 160036, mets plutôt :
+# CHECKPOINT_PATH = "results/cadet-hatecot-finetune-seed42-20260516_160036/checkpoints/best/model.pt"
+# THRESHOLD = 0.46
 
 
-# === 2. Recréer le modèle ===
 model = CADET(
-    n_targets=n_targets,
+    n_targets=N_TARGETS,
     encoder_checkpoint=ENCODER_ID,
     decoder_checkpoint=DECODER_ID,
     style_dim=2,
@@ -57,16 +43,12 @@ model.load_state_dict(state_dict)
 model.to(DEVICE)
 model.eval()
 
-print("✅ Modèle chargé avec succès")
-
-
-# === 3. Charger les tokenizers ===
 encoder_tokenizer = AutoTokenizer.from_pretrained(ENCODER_ID)
 decoder_tokenizer = AutoTokenizer.from_pretrained(DECODER_ID)
 
+print("✅ Modèle chargé")
+print("Device:", DEVICE)
 
-# === 4. Fonction de prédiction ===
-THRESHOLD = 0.05
 
 def predict(text: str):
     enc = encoder_tokenizer(
@@ -85,35 +67,53 @@ def predict(text: str):
         max_length=MAX_LENGTH,
     )
 
+    enc = {k: v.to(DEVICE) for k, v in enc.items()}
+    dec = {k: v.to(DEVICE) for k, v in dec.items()}
+
     with torch.no_grad():
         outputs = model(
-            enc["input_ids"].to(DEVICE),
-            enc["attention_mask"].to(DEVICE),
-            dec["input_ids"].to(DEVICE),
-            dec["attention_mask"].to(DEVICE),
+            enc["input_ids"],
+            enc["attention_mask"],
+            dec["input_ids"],
+            dec["attention_mask"],
         )
 
-    logits = outputs["hate_logits"]
-    probs = torch.softmax(logits, dim=1)
+    hate_logits = outputs["hate_logits"]
 
-    hate_prob = probs[0, 1].item()
+    print("Output keys:", outputs.keys())
+    print("hate_logits shape:", hate_logits.shape)
+
+    if hate_logits.shape[-1] == 2:
+        probs = torch.softmax(hate_logits, dim=-1)
+        hate_prob = probs[0, 1].item()
+        non_hate_prob = probs[0, 0].item()
+    else:
+        hate_prob = torch.sigmoid(hate_logits.view(-1))[0].item()
+        non_hate_prob = 1.0 - hate_prob
+
     pred = int(hate_prob >= THRESHOLD)
 
-    return logits, probs, pred
+    return {
+        "text": text,
+        "non_hate_prob": non_hate_prob,
+        "hate_prob": hate_prob,
+        "threshold": THRESHOLD,
+        "pred": pred,
+        "label": "hate" if pred == 1 else "non-hate",
+    }
 
-# === 5. Test sur texte ===
-text = "Hello how are you?"  # Exemple de texte potentiellement haineux
 
-logits, probs, pred = predict(text)
+texts = [
+    "My aunt is an immigrant."
+]
 
-labels = {
-    0: "non-hate",
-    1: "hate",
-}
+#The model correctly detects implicit hate when the target group is explicitly introduced in the context. However, when the target is only referred to by an ambiguous pronoun such as “they”, the model tends to classify the sentence as non-hate. This suggests that CADET relies strongly on contextual target cues and struggles with decontextualized anaphoric references.
 
-print("Texte:", text)
-print("Logits:", logits)
-print("Probabilité non-hate:", probs[0, 0].item())
-print("Probabilité hate:", probs[0, 1].item())
-print("Seuil utilisé:", THRESHOLD)
-print("Classe prédite:", labels[pred])
+for text in texts:
+    result = predict(text)
+    print("\n---")
+    print("Texte:", result["text"])
+    print("Probabilité non-hate:", result["non_hate_prob"])
+    print("Probabilité hate:", result["hate_prob"])
+    print("Seuil:", result["threshold"])
+    print("Classe prédite:", result["label"])

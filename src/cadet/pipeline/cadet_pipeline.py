@@ -8,7 +8,11 @@ from typing import Any
 
 from omegaconf import DictConfig
 
-from cadet.datasets.dataloader import CADETLoader
+from pathlib import Path
+
+from pyprojroot import here
+
+from cadet.datasets.dataloader import CADETLoader, CSVCADETLoader
 from cadet.evaluation.causal_evaluator import CausalEvaluator
 from cadet.pipeline.pipeline import Pipeline
 from cadet.training.cadet_trainer import CADETTrainer
@@ -67,17 +71,36 @@ class CADETPipeline(Pipeline):
         )
 
         # Step 1: Initialize data loader
-        self.data_loader = CADETLoader(
-            dataset_name=self.data_config.dataset_name,
-            source_style=self.data_config.source_style,
-            target_style=self.data_config.get("target_style"),
-            target_conf_threshold=self.data_config.target_conf_threshold,
-            encoder_tokenizer_id=self.model_config.encoder_tokenizer,
-            decoder_tokenizer_id=self.model_config.decoder_tokenizer,
-            max_length=self.data_config.max_length,
-            root=self.data_config.data_path,
-            random_seed=self.random_seed,
-        )
+        # If train_csv_path / val_csv_path / test_csv_path are present, use local CSVs.
+        if self.data_config.get("train_csv_path"):
+            def _resolve_csv_path(path_value: str) -> Path:
+                path = Path(path_value)
+                return path if path.is_absolute() else here(path)
+
+            self.data_loader = CSVCADETLoader(
+                train_csv_path=_resolve_csv_path(self.data_config.train_csv_path),
+                val_csv_path=_resolve_csv_path(self.data_config.val_csv_path),
+                test_csv_path=_resolve_csv_path(self.data_config.test_csv_path),
+                source_style=self.data_config.source_style,
+                target_style=self.data_config.get("target_style"),
+                target_conf_threshold=self.data_config.target_conf_threshold,
+                encoder_tokenizer_id=self.model_config.encoder_tokenizer,
+                decoder_tokenizer_id=self.model_config.decoder_tokenizer,
+                max_length=self.data_config.max_length,
+                random_seed=self.random_seed,
+            )
+        else:
+            self.data_loader = CADETLoader(
+                dataset_name=self.data_config.dataset_name,
+                source_style=self.data_config.source_style,
+                target_style=self.data_config.get("target_style"),
+                target_conf_threshold=self.data_config.target_conf_threshold,
+                encoder_tokenizer_id=self.model_config.encoder_tokenizer,
+                decoder_tokenizer_id=self.model_config.decoder_tokenizer,
+                max_length=self.data_config.max_length,
+                root=self.data_config.data_path,
+                random_seed=self.random_seed,
+            )
 
         # Step 2-4: Initialize trainer
         self.trainer = CADETTrainer(
